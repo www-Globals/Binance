@@ -1,4 +1,5 @@
 flask
 requests
 python-binance
+binance-connector
 websocket-client

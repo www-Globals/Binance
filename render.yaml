@@ -1,0 +1,40 @@
+# render.yml – Render Blueprint for the arbitrage bot
+# Place this file in the root of your GitHub repository.
+
+services:
+  - type: worker                      # Runs as a background worker (not a web service)
+    name: arb-bot                     # Service name on Render
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python binance.py   # Your bot's entry point
+    plan: free                        # Free tier – 750 hours/month
+
+    envVars:
+      # ----- Python version (optional, Render defaults to 3.11) -----
+      - key: PYTHON_VERSION
+        value: 3.11.0
+
+      # ----- Binance API credentials (REQUIRED) -----
+      - key: BINANCE_API_KEY
+        sync: false                   # You must set this in Render's dashboard
+      - key: BINANCE_SECRET
+        sync: false
+
+      # ----- Supabase (REQUIRED for logging) -----
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY             # Use the service role key (not anon)
+        sync: false
+
+      # ----- Telegram alerts (optional) -----
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_CHAT_ID
+        sync: false
+
+      # ----- Toggle between testnet and live -----
+      - key: USE_TESTNET
+        value: "false"                # Change to "true" for Binance testnet
+
+      # ----- Render automatically injects this for self‑ping -----
+      # RENDER_EXTERNAL_URL is auto‑set – do not add it here.

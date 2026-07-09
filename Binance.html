@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Arbitrage Dashboard</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        /* ===== RESET & FULL HEIGHT ===== */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', Arial, sans-serif; }
+        html, body {
+            height: 100vh;
+            overflow: hidden;
+        }
+        body {
+            background: linear-gradient(145deg, #f0f4fb 0%, #e3eaf2 100%);
+            display: flex;
+            align-items: flex-start;      /* 👈 TOP‑ALIGNED – changed from 'center' */
+            justify-content: center;
+            padding: 12px;
+        }
+
+        /* ===== CONTAINER – compact ===== */
+        .container {
+            max-width: 1100px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(2px);
+            padding: 14px 20px 16px;
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(0, 20, 40, 0.12);
+            display: flex;
+            flex-direction: column;
+            max-height: 95vh;          /* ensures no overflow */
+            margin-top: 8px;            /* small top margin for breathing */
+        }
+
+        /* ===== HEADER – smaller ===== */
+        h1 {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0b1e2e;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        h1 i { font-size: 20px; color: #0b9f4a; }
+        h1::after {
+            content: '';
+            flex: 1;
+            height: 2px;
+            background: linear-gradient(90deg, #0b9f4a, #b8d9c5, transparent);
+            margin-left: 8px;
+            border-radius: 2px;
+        }
+
+        /* ===== CARDS – smaller ===== */
+        .stats {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .card {
+            flex: 1;
+            background: #fff;
+            border-radius: 12px;
+            padding: 8px 6px 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            border-radius: 12px 12px 0 0;
+        }
+        .card:nth-child(1)::before { background: linear-gradient(90deg, #3b82f6, #93bffd); }
+        .card:nth-child(2)::before { background: linear-gradient(90deg, #0b9f4a, #6fcf97); }
+        .card:nth-child(3)::before { background: linear-gradient(90deg, #0b9f4a, #6fcf97); }
+        .card:nth-child(4)::before { background: linear-gradient(90deg, #f59e0b, #fcd34d); }
+
+        .card i {
+            font-size: 14px;
+            display: block;
+            margin-bottom: 2px;
+            opacity: 0.7;
+        }
+        .card:nth-child(1) i { color: #3b82f6; }
+        .card:nth-child(2) i { color: #0b9f4a; }
+        .card:nth-child(3) i { color: #0b9f4a; }
+        .card:nth-child(4) i { color: #f59e0b; }
+
+        .label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: #5f7d95;
+            margin-bottom: 1px;
+        }
+        .value {
+            font-size: 16px;
+            font-weight: 800;
+            color: #0f2638;
+            line-height: 1.2;
+        }
+        .value .sub {
+            font-size: 11px;
+            font-weight: 600;
+            color: #5f7d95;
+            display: block;
+        }
+        .value.profit { color: #0b9f4a; }
+        .value.loss { color: #d32f2f; }
+        .value .sub.profit { color: #0b9f4a; }
+        .value .sub.loss { color: #d32f2f; }
+
+        /* ===== TABLE – smaller ===== */
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.03);
+            margin-bottom: 6px;
+        }
+        thead {
+            background: linear-gradient(135deg, #1a3144, #2a4a62);
+        }
+        th {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 6px 8px;
+            color: #fff;
+            border: none;
+        }
+        td {
+            font-size: 11px;
+            padding: 6px 8px;
+            border: none;
+            border-bottom: 1px solid #eef3f8;
+            color: #1f384d;
+            font-weight: 500;
+            text-align: center;
+        }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr { background: #fff; }
+        tbody tr:hover { background: #f6faff; }
+
+        .profit-badge, .loss-badge {
+            display: inline-block;
+            padding: 1px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .profit-badge { background: #e6f7ed; color: #0b9f4a; }
+        .loss-badge { background: #fde8e8; color: #d32f2f; }
+
+        /* ===== STATUS LINE – compact ===== */
+        .status-line {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 12px;
+            font-size: 10px;
+            color: #5f7d95;
+            font-weight: 500;
+            padding-top: 6px;
+            border-top: 1px solid rgba(0,0,0,0.04);
+            margin-top: 4px;
+        }
+        .status-line i { margin-right: 3px; }
+        .dot {
+            display: inline-block;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #0b9f4a;
+            margin-right: 3px;
+            box-shadow: 0 0 0 2px rgba(11,159,74,0.15);
+        }
+
+        /* ===== WITHDRAW BUTTON – smaller ===== */
+        .withdraw-section {
+            text-align: center;
+            border-top: 1px solid #eef3f8;
+            padding-top: 10px;
+            margin-top: 2px;
+        }
+        .withdraw-btn {
+            background: linear-gradient(135deg, #f7931a, #f0b90b);
+            color: #fff;
+            font-weight: 700;
+            font-size: 13px;
+            padding: 8px 28px;
+            border-radius: 30px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 3px 12px rgba(247,147,26,0.3);
+            letter-spacing: 0.2px;
+        }
+        .withdraw-btn i { margin-right: 6px; }
+        .withdraw-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 6px 20px rgba(247,147,26,0.4);
+        }
+        .withdraw-section p {
+            font-size: 10px;
+            color: #5f7d95;
+            margin-top: 4px;
+        }
+
+        /* ===== MODAL – unchanged ===== */
+        .modal-overlay { display: none; position: fixed; top:0;left:0;width:100%;height:100%; background: rgba(0,0,0,0.6); backdrop-filter:blur(4px); justify-content:center; align-items:center; z-index:1000; padding:20px; animation:fadeIn 0.3s ease; }
+        .modal-overlay.active { display: flex; }
+        .modal { background:#fff; max-width:450px; width:100%; border-radius:18px; padding:20px 24px 24px; box-shadow:0 20px 60px rgba(0,0,0,0.3); animation:slideUp 0.3s ease; max-height:90vh; overflow-y:auto; }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        @keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+        .modal h2 { font-size:18px; font-weight:800; color:#0b1e2e; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+        .modal h2 i { color:#f7931a; }
+        .modal .sub { font-size:12px; color:#5f7d95; margin-bottom:16px; }
+        .modal .form-group { margin-bottom:12px; }
+        .modal label { font-size:11px; font-weight:700; color:#2a4a62; display:block; margin-bottom:3px; }
+        .modal input { width:100%; padding:8px 12px; border:1px solid #dcdcdc; border-radius:8px; font-size:13px; background:#fafafa; }
+        .modal input:focus { border-color:#f7931a; outline:none; background:#fff; }
+        .modal .input-group { display:flex; align-items:center; gap:6px; }
+        .modal .input-group span { background:#f0f4fb; padding:0 10px; border-radius:8px; font-weight:600; color:#1a3144; font-size:13px; white-space:nowrap; }
+        .modal .rate-info { font-size:11px; color:#3b82f6; text-align:right; margin-top:2px; }
+        .modal .divider { border-top:1px solid #eef3f8; margin:12px 0; }
+        .modal .bank-details { background:#f8fafc; padding:10px 12px; border-radius:10px; font-size:12px; color:#1f384d; border-left:4px solid #f7931a; margin-top:8px; }
+        .modal .bank-details strong { font-weight:700; }
+        .modal .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+        .modal .actions button { padding:8px 20px; border:none; border-radius:30px; font-weight:700; font-size:13px; cursor:pointer; }
+        .modal .actions .btn-cancel { background:#eef3f8; color:#1a3144; }
+        .modal .actions .btn-cancel:hover { background:#dce4ed; }
+        .modal .actions .btn-confirm { background:linear-gradient(135deg,#f7931a,#f0b90b); color:#fff; box-shadow:0 3px 12px rgba(247,147,26,0.3); }
+        .modal .actions .btn-confirm:hover { transform:scale(1.02); }
+        .modal .error-msg { color:#d32f2f; font-size:11px; margin-top:4px; display:none; }
+        .modal .error-msg.show { display:block; }
+
+        /* small screen adjustments */
+        @media (max-height: 700px) {
+            .container { padding: 10px 14px 12px; }
+            h1 { font-size: 16px; }
+            .card { padding: 6px 4px; }
+            .value { font-size: 14px; }
+            .value .sub { font-size: 10px; }
+            td, th { font-size: 10px; padding: 4px 6px; }
+            .withdraw-btn { font-size: 12px; padding: 6px 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <h1>
+        <i class="fas fa-chart-line"></i>
+        Arbitrage Dashboard
+    </h1>
+
+    <!-- Cards -->
+    <div class="stats">
+        <div class="card">
+            <i class="fas fa-wallet"></i>
+            <div class="label">Balance</div>
+            <div class="value" id="balance">--</div>
+        </div>
+        <div class="card">
+            <i class="fas fa-arrow-trend-up"></i>
+            <div class="label">Today's Profit</div>
+            <div class="value profit" id="todayProfit">--</div>
+        </div>
+        <div class="card">
+            <i class="fas fa-coins"></i>
+            <div class="label">Total Profit</div>
+            <div class="value profit" id="totalProfit">--</div>
+        </div>
+        <div class="card">
+            <i class="fas fa-rotate-left"></i>
+            <div class="label">Trades</div>
+            <div class="value" id="tradeCount">--</div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <table>
+        <thead>
+            <tr>
+                <th>Period</th>
+                <th>Trades</th>
+                <th>Wins</th>
+                <th>Losses</th>
+                <th>Net Profit (KES)</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            <tr><td colspan="5" class="loading">Loading...</td></tr>
+        </tbody>
+    </table>
+
+    <!-- Status + Withdraw -->
+    <div class="status-line">
+        <span><span class="dot"></span> <span id="statusText">Online</span></span>
+        <span><i class="fas fa-bolt"></i> <span id="lastUpdate">--</span></span>
+        <span><i class="fas fa-shield-alt"></i> Secure</span>
+        <span id="rateDisplay" style="font-weight:600; color:#3b82f6;">--</span>
+    </div>
+
+    <div class="withdraw-section">
+        <button class="withdraw-btn" id="openWithdrawModal">
+            <i class="fas fa-coins"></i> Sell Coins to Verified Buyers
+        </button>
+        <p><i class="fas fa-shield-alt"></i> Opens Binance P2P – verified KES buyers</p>
+    </div>
+
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="withdrawModal">
+    <div class="modal">
+        <h2><i class="fas fa-hand-holding-usd"></i> Withdraw to P2P</h2>
+        <div class="sub">Enter the amount and confirm your bank details.</div>
+        <div class="form-group">
+            <label for="amountUSD">Amount (USD)</label>
+            <div class="input-group">
+                <span>$</span>
+                <input type="number" id="amountUSD" placeholder="0.00" step="0.01" min="1" />
+            </div>
+            <div class="rate-info" id="modalRateDisplay">1 USD = -- KES</div>
+        </div>
+        <div class="form-group">
+            <label for="amountKES">Equivalent (KES)</label>
+            <div class="input-group">
+                <span>KES</span>
+                <input type="text" id="amountKES" placeholder="0.00" readonly style="background:#f3f6fa;" />
+            </div>
+        </div>
+        <div class="divider"></div>
+        <div class="bank-details">
+            <p><strong>Paybill:</strong> <span id="bankPaybill">123456</span></p>
+            <p><strong>Account:</strong> <span id="bankAccount">0123456789</span></p>
+            <p><strong>Bank:</strong> <span id="bankName">Equity Bank</span></p>
+            <p style="font-size:11px; color:#5f7d95; margin-top:4px;">
+                <i class="fas fa-info-circle"></i> Funds credited after P2P trade.
+            </p>
+        </div>
+        <div class="error-msg" id="modalError">Please enter a valid amount.</div>
+        <div class="actions">
+            <button class="btn-cancel" id="closeModal">Cancel</button>
+            <button class="btn-confirm" id="confirmWithdraw">Confirm & Go to P2P</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ===== CONFIGURATION =====
+    const SUPABASE_URL = 'https://your-project.supabase.co';   // CHANGE
+    const SUPABASE_ANON_KEY = 'your-anon-key';                // CHANGE
+
+    const BANK_PAYBILL = '123456';       // CHANGE
+    const BANK_ACCOUNT = '0123456789';   // CHANGE
+    const BANK_NAME = 'Equity Bank';     // CHANGE
+
+    let exchangeRate = 130;
+
+    // ===== HELPERS =====
+    function startOfDay() {
+        const d = new Date();
+        d.setUTCHours(0,0,0,0);
+        return d.toISOString();
+    }
+    function startOfWeek() {
+        const d = new Date();
+        const day = d.getUTCDay();
+        const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+        d.setUTCDate(diff);
+        d.setUTCHours(0,0,0,0);
+        return d.toISOString();
+    }
+    function startOfMonth() {
+        const d = new Date();
+        d.setUTCDate(1);
+        d.setUTCHours(0,0,0,0);
+        return d.toISOString();
+    }
+    function formatKES(num) { return num.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function formatUSD(num) { return num.toFixed(2); }
+
+    // ===== FETCH EXCHANGE RATE =====
+    async function fetchExchangeRate() {
+        try {
+            const resp = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+            const data = await resp.json();
+            const rate = data.rates.KES;
+            if (rate) {
+                exchangeRate = rate;
+                document.getElementById('rateDisplay').textContent = `1 USD = ${rate.toFixed(2)} KES`;
+                document.getElementById('modalRateDisplay').textContent = `1 USD = ${rate.toFixed(2)} KES`;
+                return;
+            }
+        } catch (e) {}
+        document.getElementById('rateDisplay').textContent = `1 USD = ${exchangeRate.toFixed(2)} KES (fallback)`;
+        document.getElementById('modalRateDisplay').textContent = `1 USD = ${exchangeRate.toFixed(2)} KES (fallback)`;
+    }
+
+    // ===== FETCH STATS =====
+    async function fetchStats() {
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const { data, error } = await supabase
+            .from('trades')
+            .select('status, profit_kes, balance, timestamp')
+            .order('timestamp', { ascending: false });
+
+        if (error) {
+            document.getElementById('tableBody').innerHTML = `<tr><td colspan="5" class="error">Error: ${error.message}</td></tr>`;
+            document.getElementById('statusText').textContent = 'Error';
+            return;
+        }
+        if (!data || data.length === 0) {
+            document.getElementById('tableBody').innerHTML = `<tr><td colspan="5">No trades yet.</td></tr>`;
+            document.getElementById('statusText').textContent = 'Waiting';
+            return;
+        }
+
+        const latestBalance = data[0]?.balance || 0;
+        const wins = data.filter(row => row.status === 'WIN');
+        const totalProfitKES = wins.reduce((sum, row) => sum + row.profit_kes, 0);
+        const totalProfitUSD = totalProfitKES / exchangeRate;
+
+        const todayStart = startOfDay();
+        const todayWins = wins.filter(row => row.timestamp >= todayStart);
+        const todayLosses = data.filter(row => row.status === 'LOSS' && row.timestamp >= todayStart);
+        const todayProfitKES = todayWins.reduce((sum, row) => sum + row.profit_kes, 0);
+        const todayProfitUSD = todayProfitKES / exchangeRate;
+        const todayTrades = todayWins.length + todayLosses.length;
+
+        const weekStart = startOfWeek();
+        const weekWins = wins.filter(row => row.timestamp >= weekStart);
+        const weekLosses = data.filter(row => row.status === 'LOSS' && row.timestamp >= weekStart);
+        const weekProfitKES = weekWins.reduce((sum, row) => sum + row.profit_kes, 0);
+        const weekTrades = weekWins.length + weekLosses.length;
+
+        const monthStart = startOfMonth();
+        const monthWins = wins.filter(row => row.timestamp >= monthStart);
+        const monthLosses = data.filter(row => row.status === 'LOSS' && row.timestamp >= monthStart);
+        const monthProfitKES = monthWins.reduce((sum, row) => sum + row.profit_kes, 0);
+        const monthTrades = monthWins.length + monthLosses.length;
+
+        const totalTrades = data.length;
+
+        // Update cards
+        document.getElementById('balance').innerHTML = `
+            $${formatUSD(latestBalance)}
+            <span class="sub">KES ${formatKES(latestBalance * exchangeRate)}</span>
+        `;
+        document.getElementById('todayProfit').innerHTML = `
+            ${todayProfitUSD >= 0 ? '+' : ''}$${formatUSD(todayProfitUSD)}
+            <span class="sub profit">${todayProfitUSD >= 0 ? '+' : ''}KES ${formatKES(todayProfitKES)}</span>
+        `;
+        document.getElementById('totalProfit').innerHTML = `
+            $${formatUSD(totalProfitUSD)}
+            <span class="sub profit">KES ${formatKES(totalProfitKES)}</span>
+        `;
+        document.getElementById('tradeCount').textContent = totalTrades;
+
+        // Table rows
+        const rows = [
+            { label: 'Today', trades: todayTrades, wins: todayWins.length, losses: todayLosses.length, profit: todayProfitKES },
+            { label: 'Week', trades: weekTrades, wins: weekWins.length, losses: weekLosses.length, profit: weekProfitKES },
+            { label: 'Month', trades: monthTrades, wins: monthWins.length, losses: monthLosses.length, profit: monthProfitKES }
+        ];
+        let html = '';
+        rows.forEach(r => {
+            const pClass = r.profit >= 0 ? 'profit' : 'loss';
+            const sign = r.profit >= 0 ? '+' : '';
+            html += `<tr>
+                <td>${r.label}</td>
+                <td>${r.trades}</td>
+                <td><span class="profit-badge">${r.wins}</span></td>
+                <td><span class="loss-badge">${r.losses}</span></td>
+                <td class="${pClass}">${sign}KES ${formatKES(r.profit)}</td>
+            </tr>`;
+        });
+        document.getElementById('tableBody').innerHTML = html;
+
+        document.getElementById('statusText').textContent = 'Online';
+        const nowStr = new Date().toLocaleTimeString('en-KE', { hour12: false, timeZone: 'UTC' });
+        document.getElementById('lastUpdate').textContent = `Updated ${nowStr} UTC`;
+    }
+
+    // ===== MODAL LOGIC =====
+    const modal = document.getElementById('withdrawModal');
+    const openBtn = document.getElementById('openWithdrawModal');
+    const closeBtn = document.getElementById('closeModal');
+    const confirmBtn = document.getElementById('confirmWithdraw');
+    const amountUSD = document.getElementById('amountUSD');
+    const amountKES = document.getElementById('amountKES');
+    const errorMsg = document.getElementById('modalError');
+
+    document.getElementById('bankPaybill').textContent = BANK_PAYBILL;
+    document.getElementById('bankAccount').textContent = BANK_ACCOUNT;
+    document.getElementById('bankName').textContent = BANK_NAME;
+
+    function openModal() {
+        modal.classList.add('active');
+        amountUSD.value = '';
+        amountKES.value = '';
+        errorMsg.classList.remove('show');
+        amountUSD.focus();
+    }
+    function closeModal() { modal.classList.remove('active'); }
+    function updateKES() {
+        const usd = parseFloat(amountUSD.value);
+        amountKES.value = (!isNaN(usd) && usd > 0) ? (usd * exchangeRate).toFixed(2) : '';
+    }
+    amountUSD.addEventListener('input', updateKES);
+
+    function confirmWithdraw() {
+        const usd = parseFloat(amountUSD.value);
+        if (!usd || usd <= 0) {
+            errorMsg.textContent = 'Enter a valid positive amount.';
+            errorMsg.classList.add('show');
+            return;
+        }
+        errorMsg.classList.remove('show');
+        const p2pUrl = 'https://c2c.binance.com/en/trade/sell/USDT?fiat=KES';
+        window.open(p2pUrl, '_blank');
+        console.log(`Withdraw: ${usd} USD ≈ ${(usd * exchangeRate).toFixed(2)} KES`);
+        closeModal();
+    }
+
+    openBtn.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+    confirmBtn.addEventListener('click', confirmWithdraw);
+    modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && modal.classList.contains('active')) closeModal(); });
+
+    // ===== INIT =====
+    async function init() {
+        await fetchExchangeRate();
+        await fetchStats();
+        setInterval(fetchStats, 30000);
+    }
+    init();
+</script>
+</body>
+</html>

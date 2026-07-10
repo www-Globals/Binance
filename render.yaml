@@ -6,7 +6,18 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python arb_bot.py
     plan: free
-    envGroup: Binance
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_CHAT_ID
+        sync: false

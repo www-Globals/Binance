@@ -1,0 +1,23 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # Every 15 minutes
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check health endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://simiyu-payload.onrender.com/health)
+          if [ $response -eq 200 ]; then
+            echo "✅ Service is healthy"
+          else
+            echo "❌ Service is down! Status: $response"
+            curl -X POST -H "Content-Type: application/json" \
+              -d '{"content": "❌ ALERT: Simiyu Payload service is DOWN! Status: '$response'"}' \
+              https://api.telegram.org/bot8585104821:AAFXZn3g7QG9NsCmLmZuyfviQkPddOYMJzc/sendMessage?chat_id=8468538314
+            exit 1
+          fi
